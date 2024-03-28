@@ -64,6 +64,7 @@ def process_vehicle_detection(count, db, reader, save_path):
             print("화면 캡쳐에 실패했습니다.")
         cv2.destroyAllWindows()
 
+# OCR 전처리
 def preprocess_ocr(img):
     # 회색조 변환
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -89,7 +90,7 @@ def preprocess_ocr(img):
 
     return gray
 
-# Firebase 업데이트 및 인식 결과 처리 함수
+# 번호판 인식 함수
 def process_licenseplate_detection(latest_exp_path, frame, count, db, A1_value, A2_value, reader):
     labels_path = os.path.join(latest_exp_path, 'labels', f"captured_frame_{count}.txt")
     with open(labels_path, 'r') as file:
@@ -101,39 +102,34 @@ def process_licenseplate_detection(latest_exp_path, frame, count, db, A1_value, 
     # 레이블 파일에서 번호판 좌표 추출
     for line in lines:
         parts = line.strip().split()
-        # YOLO 출력 포맷에 따라, x_center는 전체 이미지에 대한 상대적인 위치입니다.
-        x, y, w, h = map(float, parts[1:5])  # x, y, w, h 추출
-        # 이미지의 실제 크기에 맞게 x_center 좌표를 조정합니다.
-        x_centers.append(x * frame.shape[1])  # 실제 이미지 크기에 맞춘 x_center 값 추가
+        x, y, w, h = map(float, parts[1:5])
+        x_centers.append(x * frame.shape[1])
 
-    # 번호판이 없는 경우 함수 종료
     if not x_centers:
         print("번호판을 인식할 수 없습니다.")
         return
 
-    # x_center의 평균값 계산하여, 이를 기준으로 주차 공간 결정에 사용
-    x_center_average = sum(x_centers) / len(x_centers)
+    # x_center 값들을 기반으로 각 번호판 위치 결정
+    x_centers.sort()  # x_center 값들을 오름차순으로 정렬
 
-    # 각 번호판에 대한 처리
-    for line in lines:
+    for i, line in enumerate(lines):
         parts = line.strip().split()
         x, y, w, h = map(float, parts[1:5])
-        # 실제 좌표로 변환
         x_min, x_max, y_min, y_max = calculate_coordinates(x, y, w, h, frame)
         roi = frame[y_min:y_max, x_min:x_max]
 
-        # OCR 전처리
         preprocessed_roi = preprocess_ocr(roi)
         
-        # OCR로 번호판 텍스트 인식
         text_list = reader.readtext(roi, detail=0)
         combined_text = ' '.join(text_list)
         print(combined_text)  # 인식된 번호판 텍스트 출력
 
-        # 번호판 위치 결정 (평균 중심 좌표 기준)
-        parking_spot = 'A1' if (x_min + x_max) / 2 < x_center_average else 'A2'
+        # x_center의 값에 따라 주차 공간을 결정
+        if x * frame.shape[1] == x_centers[0]:
+            parking_spot = 'A1'  # 가장 작은 x_center 값을 가지면 A1
+        else:
+            parking_spot = 'A2'  # 그 외의 경우 A2
 
-        # Firebase에 주차 상태 업데이트
         update_firebase_recognition(db, A1_value, A2_value, parking_spot, combined_text)
 
 
@@ -145,10 +141,9 @@ def calculate_coordinates(x, y, w, h, frame):
     y_max = int((y + h / 2) * frame.shape[0])
     return x_min, x_max, y_min, y_max
 
-# Firebase 기반 인식 결과 업데이트 함수
+# Firebase 차량 등록 여부 업데이트 함수
 def update_firebase_recognition(db, A1_value, A2_value, parking_spot, combined_text):
     
-    # Firebase에 주차 상태 업데이트
     if (parking_spot == 'A1' and A1_value) or (parking_spot == 'A2' and A2_value):
         registered_ref = db.collection("registered").document("car_license")
         registered_doc = registered_ref.get()
