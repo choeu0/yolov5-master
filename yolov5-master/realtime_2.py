@@ -51,7 +51,7 @@ def set_webcam_active_status(active):
     ref = firebase_admin.db.reference('webcam_active')
     ref.set(active)
 
-def process_vehicle_detection(count, db, reader, save_path):
+def process_vehicle_detection(count, db, reader, save_path, cap):
     if not hasattr(process_vehicle_detection, "previous_angle"):
         process_vehicle_detection.previous_angle = None  # 함수에 상태 저장을 위한 속성 초기화
 
@@ -59,7 +59,7 @@ def process_vehicle_detection(count, db, reader, save_path):
     
     if current_angle != process_vehicle_detection.previous_angle:
         process_vehicle_detection.previous_angle = current_angle  # 각도 상태 업데이트
-        cap = cv2.VideoCapture(1)
+        # cap = cv2.VideoCapture(0)
         
         set_webcam_active_status(True)  # 웹캠 활성화 상태를 True로 설정
         
@@ -67,8 +67,8 @@ def process_vehicle_detection(count, db, reader, save_path):
         # zoom_level = 1.0  # 예시로 0.5로 설정
         # cap.set(cv2.CAP_PROP_ZOOM, zoom_level)  # 줌 레벨 설정
         
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)  # 너비를 1920으로 설정
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)  # 높이를 1080으로 설정
+        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)  # 너비를 1920으로 설정
+        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)  # 높이를 1080으로 설정
         
         ret, frame = cap.read()
         if ret:
@@ -82,7 +82,7 @@ def process_vehicle_detection(count, db, reader, save_path):
             # resized_frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_CUBIC)
             
             # 노이즈 제거
-            # frame_denoised = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 21)
+            frame_denoised = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 21)
             
             # 대비 향상 (CLAHE 적용)
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -90,7 +90,7 @@ def process_vehicle_detection(count, db, reader, save_path):
             frame_clahe = clahe.apply(frame_gray)
             
             # 대비 향상된 그레이스케일 이미지를 BGR로 변환하여 저장 및 사용
-            frame_preprocessed = cv2.cvtColor(frame_clahe, cv2.COLOR_GRAY2BGR)
+            frame_preprocessed = cv2.cvtColor(frame_gray, cv2.COLOR_GRAY2BGR)
             
             img_path = os.path.join(save_path, f"captured_frame_{count}.jpg")
             cv2.imwrite(img_path, frame_preprocessed)
@@ -107,10 +107,9 @@ def process_vehicle_detection(count, db, reader, save_path):
                 process_licenseplate_detection(latest_exp_path, frame_clahe, count, db, reader, save_path, current_angle)
             else:
                 print("객체 탐지 실험 경로를 찾을 수 없습니다.")
-            cap.release()
         else:
             print("화면 캡쳐에 실패했습니다.")
-        # cv2.destroyAllWindows()
+
         set_webcam_active_status(False) # 웹캠 활성화 상태를 False로 설정
 
 # 번호판 인식 함수
@@ -137,6 +136,7 @@ def process_licenseplate_detection(latest_exp_path, frame, count, db, reader, sa
         
         text_list = reader.readtext(roi, detail=0)
         combined_text = ' '.join(text_list)
+        combined_text = combined_text[:9]
         print(combined_text)  # 인식된 번호판 텍스트 출력
 
         # x_center 계산 및 저장
@@ -222,13 +222,19 @@ def main():
     reader = easyocr.Reader(['ko'], gpu=False)  # OCR 초기화
     save_path = r'C:/capstone/yolov5-master/assets'  # 저장 경로 설정
     
+    # 카메라 초기화
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    
     try:
         while True:
-            process_vehicle_detection(count, db, reader, save_path)
+            process_vehicle_detection(count, db, reader, save_path, cap)
             count += 1
     except KeyboardInterrupt:
         print("프로그램을 종료합니다.")
     finally:
+        cap.release()
         cv2.destroyAllWindows()  # 모든 OpenCV 창을 닫습니다.
         
 if __name__ == "__main__":
