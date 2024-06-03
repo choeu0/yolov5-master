@@ -8,9 +8,10 @@
 #define FIREBASE_AUTH "qyQJdDEJv7Kn61As6rjle22QmTzViiHIGoGLC0ba"
 #define SSID "iptime0"
 #define SSID_PASSWORD "dndud516"
+// #define SSID "uyeong"
+// #define SSID_PASSWORD "dndud516"
 #define PARKING_SPOT_STATE_KEY "/parking_spot_state"
 #define PARKING_SPOT_ANGLE_KEY "/parking_spot_angle/current_angle"
-#define WEBCAM_ACTIVE_KEY "/webcam_active" 
 
 // 센서 및 서보 모터 설정
 #define NUM_SENSORS 4
@@ -53,19 +54,8 @@ void updateServoAngle(int angle) { // Firebase에 각도 업데이트
     Firebase.setInt(firebaseData, PARKING_SPOT_ANGLE_KEY, angle);
 }
 
-bool getWebcamActiveStatus() {  // 웹캠의 활성화 상태 Firebase에서 읽어옴
-    firebaseData.clear(); 
-    if (Firebase.getBool(firebaseData, WEBCAM_ACTIVE_KEY)) {
-        return firebaseData.boolData();
-    } else {
-        Serial.print("webcamActive");
-        return true; // Firebase로부터 값을 읽어오지 못한 경우 true를 반환 
-    }
-}
-
 void loop() {
     int lastActiveSensor = -1; // 마지막으로 활성화된 센서 인덱스 저장
-    bool webcamActive = getWebcamActiveStatus(); // 웹캠 활성화 상태를 가져옴
 
     for (int i = 0; i < NUM_SENSORS; i++) {
         unsigned int distance = sonar[i].ping_cm(); // 거리 측정
@@ -86,7 +76,7 @@ void loop() {
         }
     }
 
-    if (lastActiveSensor != -1 && !webcamActive) { // 활성화된 센서가 있고, 웹캠이 비활성화된 경우에만
+    if (lastActiveSensor != -1) { // 활성화된 센서가 있는 경우
         int angle = lastActiveSensor < 2 ? 0 : 180; // A1 또는 A2는 0도, A3 또는 A4는 180도
         myservo.write(angle);  // 서보 모터 각도 조정
         Serial.print("Rotating to ");
